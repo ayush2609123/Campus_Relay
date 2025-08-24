@@ -32,3 +32,16 @@ export async function listMyBookings(): Promise<BookingWithTrip[]> {
     const r = await api.post(`/bookings/${id}/cancel`);
     return r.data?.data || r.data;
   }
+
+
+
+export async function regenerateOtp(bookingId: string): Promise<{ id: string; otp: string; otpExpiresAt: string }> {
+  const { data } = await api.post(`/bookings/${bookingId}/otp`);
+  return data.data; // { id, otp, otpExpiresAt }
+}
+
+
+export async function verifyOtp(bookingId: string, code: string): Promise<{ id: string; verifiedAt: string }> {
+  const { data } = await api.post(`/bookings/${bookingId}/verify-otp`, { code });
+  return data.data; // { id, verifiedAt }
+}

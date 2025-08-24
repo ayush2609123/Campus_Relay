@@ -59,10 +59,10 @@ async function main() {
   console.log("== Create trip (driver) ==");
   const trip = await req("POST", "/api/trips", {
     kind: "shuttle",
-    routeName: "IIIT Pune \u2192 Hinjewadi (Shuttle)",
+    routeName: "IIIT Pune \u2192 Shivaji Nagar (Shuttle)",
     origin: { name: "IIIT Pune (Talegaon)", lat: 18.7407, lng: 73.6813 },
-    destination: { name: "Airport", lat: 18.5286, lng: 73.8740 },
-    startTime: isoPlus(4),
+    destination: { name: "Station", lat: 18.5286, lng: 73.8740 },
+    startTime: isoPlus(6),
     pricePerSeat: 49,
     totalSeats: 40
   }, DRIVER_ACCESS);
