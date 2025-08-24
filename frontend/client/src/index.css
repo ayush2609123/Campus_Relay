@@ -1,0 +1,10 @@
+@import "tailwindcss";
+@source "../index.html";
+@source "./**/*.{ts,tsx}";
+:root {
+  --radius: 14px;
+  --shadow-card: 0 10px 30px rgba(0,0,0,.12);
+}
+
+html, body, #root { height: 100%; }
+body { @apply bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100; }
