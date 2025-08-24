@@ -1,6 +1,6 @@
 import api from "@/lib/api";
 import { Trip, Hub } from "./types";
-
+import axios from "axios";
 export async function searchTrips(params: {
   q?: string;
   date?: string;
@@ -69,4 +69,25 @@ const DEFAULT_HUBS: Hub[] = [
     const r = await api.get(`/trips/${id}`);
     return (r.data?.data || r.data) as Trip;
   }
+
+  export type TripDoc = {
+    _id: string;
+    origin: { name: string };
+    destination: { name: string };
+    startTime: string;
+    pricePerSeat: number;
+    seatsLeft: number;
+    totalSeats: number;
+    status: "draft"|"published"|"ongoing"|"completed"|"cancelled";
+    driverId: string;
+  };
   
+  export async function fetchMyTrips(): Promise<TripDoc[]> {
+    const { data } = await axios.get("/api/trips/my");
+    return data.data ?? [];
+  }
+  
+  export async function transitionTrip(id: string, action: "publish"|"start"|"complete"|"cancel"): Promise<TripDoc> {
+    const { data } = await axios.post(`/api/trips/${id}/${action}`);
+    return data.data;
+  }

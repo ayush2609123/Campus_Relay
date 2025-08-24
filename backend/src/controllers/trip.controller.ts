@@ -1,11 +1,11 @@
 import { Request, Response } from "express";
-import { Types } from "mongoose";
+import { Types, isValidObjectId } from "mongoose";
 import Trip from "../models/Trip.model";
 import { ApiError } from "../utils/ApiError";
 import { ApiResponse } from "../utils/ApiResponse";
 import { asyncHandler } from "../utils/asyncHandler";
-import { createTripSchema, updateTripSchema, searchTripsSchema } from "../validators/trip.schema";
-import { isValidObjectId } from "mongoose";
+import { createTripSchema, updateTripSchema } from "../validators/trip.schema";
+
 /** Helper: ensure current user is driver (role check kept local for now) */
 function ensureDriver(req: any) {
   if (!req.user?._id) throw new ApiError(401, "Unauthorized");
@@ -23,64 +23,79 @@ function assertOwner(req: any, trip: any) {
   }
 }
 
+/** ---- Place sanitizers --------------------------------------------------- */
+type PlaceIn = { name: string; lat: number; lng: number; address?: string; hubId?: string };
+function normalizePlace(p?: PlaceIn | null) {
+  if (!p || p.lat == null || p.lng == null || !p.name?.trim()) {
+    throw new ApiError(400, "Place requires name, lat, lng");
+  }
+  const out: any = {
+    name: String(p.name).trim(),
+    lat: Number(p.lat),
+    lng: Number(p.lng),
+  };
+  if (p.address) out.address = String(p.address);
+  // only include hubId if it’s a valid Mongo ObjectId
+  if (p.hubId && isValidObjectId(p.hubId)) {
+    out.hubId = new Types.ObjectId(p.hubId);
+  }
+  return out;
+}
+
+function normalizeStops(stops: any[] = []) {
+  return stops.map((s) => normalizePlace(s));
+}
+
 /** POST /trips — create (driver only) */
-export const createTrip = asyncHandler(async (req, res) => {
-    const user = req.user;
-    if (!user || (user.role !== "driver" && user.role !== "admin")) {
-      throw new ApiError(403, "Only driver/admin can create trips");
-    }
-  
-    const {
-      kind = "carpool",
-      routeName,
-      stops = [],
-  
-      origin,
-      destination,
-      startTime,
-      pricePerSeat,
-      totalSeats,
-      vehicleId,
-    } = req.body;
-  
-    if (!origin?.name || origin.lat == null || origin.lng == null) {
-      throw new ApiError(400, "origin requires name, lat, lng");
-    }
-    if (!destination?.name || destination.lat == null || destination.lng == null) {
-      throw new ApiError(400, "destination requires name, lat, lng");
-    }
-    if (!startTime || pricePerSeat == null || totalSeats == null) {
-      throw new ApiError(400, "startTime, pricePerSeat, totalSeats are required");
-    }
-  
-    // Lenient shuttle rules for now (no hubId required yet)
-    if (kind === "shuttle") {
-      // Optional: basic sanity on stops if provided
-      for (const s of stops) {
-        if (!s?.name || typeof s.lat !== "number" || typeof s.lng !== "number") {
-          throw new ApiError(400, "Each stop must have name, lat, lng");
-        }
-      }
-    }
-  
-    const trip = await Trip.create({
-      kind,
-      routeName: routeName ?? (kind === "shuttle" ? `${origin.name} → ${destination.name} Shuttle` : undefined),
-      stops,
-      driverId: user._id,
-      vehicleId: vehicleId && isValidObjectId(vehicleId) ? vehicleId : undefined,
-      origin,
-      destination,
-      startTime: new Date(startTime),
-      pricePerSeat: Number(pricePerSeat),
-      totalSeats: Number(totalSeats),
-      seatsLeft: Number(totalSeats),
-      status: "published",
-    });
-  
-    return res.status(201).json(new ApiResponse(201, trip, "Trip created"));
+export const createTrip = asyncHandler(async (req: any, res: Response) => {
+  const user = req.user;
+  if (!user || (user.role !== "driver" && user.role !== "admin")) {
+    throw new ApiError(403, "Only driver/admin can create trips");
+  }
+
+  // If you have a zod schema, you can parse first. Otherwise keep manual checks.
+  // const body = createTripSchema.parse(req.body);
+  const {
+    kind = "carpool",
+    routeName,
+    stops = [],
+    origin,
+    destination,
+    startTime,
+    pricePerSeat,
+    totalSeats,
+    vehicleId,
+  } = req.body || {};
+
+  if (!startTime || pricePerSeat == null || totalSeats == null) {
+    throw new ApiError(400, "startTime, pricePerSeat, totalSeats are required");
+  }
+
+  // ---- sanitize places (drops invalid hubId like "static:iiit") ----
+  const originDoc = normalizePlace(origin);
+  const destinationDoc = normalizePlace(destination);
+  const stopsDoc = normalizeStops(stops);
+
+  const trip = await Trip.create({
+    kind,
+    routeName:
+      routeName ??
+      (kind === "shuttle" ? `${originDoc.name} → ${destinationDoc.name} Shuttle` : undefined),
+    stops: stopsDoc,
+    driverId: user._id,
+    vehicleId: vehicleId && isValidObjectId(vehicleId) ? new Types.ObjectId(vehicleId) : undefined,
+    origin: originDoc,
+    destination: destinationDoc,
+    startTime: new Date(startTime),
+    pricePerSeat: Number(pricePerSeat),
+    totalSeats: Number(totalSeats),
+    seatsLeft: Number(totalSeats),
+    status: "published",
   });
-  
+
+  return res.status(201).json(new ApiResponse(201, trip, "Trip created"));
+});
+
 /** GET /trips/:id — fetch details */
 export const getTrip = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
@@ -91,43 +106,39 @@ export const getTrip = asyncHandler(async (req: Request, res: Response) => {
 });
 
 /** GET /trips/search — query by hub/date/time */
-export const searchTrips = asyncHandler(async (req, res) => {
-    const { q, date, seats, limit = 20, kind } = req.query as Record<string, string>;
-    const match: any = { status: "published" };
-  
-    // Filter by kind if provided
-    if (kind === "carpool") {
-      match.$or = [{ kind: "carpool" }, { kind: { $exists: false } }];
-    } else if (kind === "shuttle") {
-      match.kind = "shuttle";
-    }
-  
-    if (q) {
-      match.$or = (match.$or || []).concat([
-        { "origin.name": { $regex: q, $options: "i" } },
-        { "destination.name": { $regex: q, $options: "i" } },
-      ]);
-    }
-  
-    if (date) {
-      const d0 = new Date(date);
-      const d1 = new Date(d0);
-      d1.setDate(d1.getDate() + 1);
-      match.startTime = { $gte: d0, $lt: d1 };
-    }
-  
-    if (seats) {
-      const n = Number(seats);
-      if (!Number.isNaN(n) && n > 0) match.seatsLeft = { $gte: n };
-    }
-  
-    const docs = await Trip.find(match)
-      .sort({ startTime: 1 })
-      .limit(Math.min(Number(limit) || 20, 100))
-      .lean();
-  
-    return res.json(new ApiResponse(200, docs));
-  });
+export const searchTrips = asyncHandler(async (req: any, res: Response) => {
+  const { q, date, seats, limit = 20, kind } = req.query as Record<string, string>;
+  const match: any = { status: "published" };
+
+  if (kind === "carpool") {
+    match.$or = [{ kind: "carpool" }, { kind: { $exists: false } }];
+  } else if (kind === "shuttle") {
+    match.kind = "shuttle";
+  }
+
+  if (q) {
+    match.$or = (match.$or || []).concat([
+      { "origin.name": { $regex: q, $options: "i" } },
+      { "destination.name": { $regex: q, $options: "i" } },
+    ]);
+  }
+
+  if (date) {
+    const d0 = new Date(date);
+    const d1 = new Date(d0);
+    d1.setDate(d1.getDate() + 1);
+    match.startTime = { $gte: d0, $lt: d1 };
+  }
+
+  if (seats) {
+    const n = Number(seats);
+    if (!Number.isNaN(n) && n > 0) match.seatsLeft = { $gte: n };
+  }
+
+  const docs = await Trip.find(match).sort({ startTime: 1 }).limit(Math.min(Number(limit) || 20, 100));
+  return res.json(new ApiResponse(200, docs));
+});
+
 /** GET /trips/my — driver’s own trips */
 export const myTrips = asyncHandler(async (req: any, res: Response) => {
   ensureDriver(req);
@@ -153,7 +164,6 @@ export const updateTrip = asyncHandler(async (req: any, res: Response) => {
     throw new ApiError(400, `Cannot modify a ${trip.status} trip`);
   }
 
-  // adjust seatsLeft if totalSeats changes (preserve already-booked)
   if (typeof payload.totalSeats === "number") {
     const booked = trip.totalSeats - trip.seatsLeft;
     if (payload.totalSeats < booked) {
@@ -165,9 +175,12 @@ export const updateTrip = asyncHandler(async (req: any, res: Response) => {
 
   if (payload.pricePerSeat !== undefined) trip.pricePerSeat = payload.pricePerSeat;
   if (payload.startTime) trip.startTime = new Date(payload.startTime);
-  if (payload.vehicleId) trip.vehicleId = new Types.ObjectId(payload.vehicleId);
-  if (payload.origin) trip.origin = payload.origin as any;
-  if (payload.destination) trip.destination = payload.destination as any;
+  if (payload.vehicleId && isValidObjectId(payload.vehicleId)) {
+    trip.vehicleId = new Types.ObjectId(payload.vehicleId);
+  }
+  if (payload.origin) trip.origin = normalizePlace(payload.origin as any);
+  if (payload.destination) trip.destination = normalizePlace(payload.destination as any);
+  if (Array.isArray(payload.stops)) trip.set("stops", normalizeStops(payload.stops as any[]));
 
   await trip.save();
   return res.json(new ApiResponse(200, trip, "Trip updated"));
@@ -206,7 +219,6 @@ export const cancelTrip = asyncHandler(async (req: any, res: Response) => {
   }
   trip.status = "cancelled";
   await trip.save();
-  // NOTE: booking cascade (mark bookings as cancelled) will be implemented in BookingController
   return res.json(new ApiResponse(200, trip, "Trip cancelled"));
 });
 

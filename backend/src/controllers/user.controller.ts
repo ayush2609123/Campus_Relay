@@ -3,6 +3,9 @@ import { ApiError } from "../utils/ApiError";
 import { ApiResponse } from "../utils/ApiResponse";
 import { asyncHandler } from "../utils/asyncHandler";
 import User from "../models/User.model";
+
+import { z } from "zod";
+
 import RefreshToken from "../models/RefreshToken.model";
 import { updateMeSchema } from "../validators/user.schema";
 
@@ -80,4 +83,39 @@ export const revokeSession = asyncHandler(async (req: any, res: Response) => {
   }
 
   return res.json(new ApiResponse(200, { id: session._id.toString(), revokedAt: session.revokedAt }, "Session revoked"));
+});
+
+const enrollSchema = z.object({
+  code: z.string().min(4, "Code required"),
+});
+
+function ensureAuthed(req: any) {
+  if (!req.user?._id) throw new ApiError(401, "Unauthorized");
+}
+
+/**
+ * POST /users/driver/enroll
+ * Body: { code }
+ * If code matches DRIVER_ENROLL_CODE, promote current user to role=driver.
+ */
+export const enrollDriver = asyncHandler(async (req: any, res) => {
+  ensureAuthed(req);
+  const { code } = enrollSchema.parse(req.body);
+
+  const expected = process.env.DRIVER_ENROLL_CODE;
+  if (!expected) throw new ApiError(500, "Enroll code not configured");
+  if (code !== expected) throw new ApiError(403, "Invalid enroll code");
+
+  // already a driver?
+  if (req.user.role === "driver") {
+    return res.json(new ApiResponse(200, { role: "driver" }, "Already a driver"));
+  }
+
+  await User.updateOne(
+    { _id: req.user._id },
+    { $set: { role: "driver", driverEnrolledAt: new Date() } as any }
+  );
+
+  const fresh = await User.findById(req.user._id).select("-password -refreshToken");
+  return res.json(new ApiResponse(200, fresh, "Role updated to driver"));
 });

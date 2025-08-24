@@ -39,8 +39,9 @@ export default function TopNav({ me }: { me?: Me }) {
           )}
         </div>
 
-        {/* Right actions only — keep navbar clean */}
+        {/* Right actions only  */}
         <div className="ml-auto flex items-center gap-2">
+            
           <ThemeToggle />
           {authed ? (
             <button
