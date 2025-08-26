@@ -17,12 +17,14 @@ function cookieBaseOpts() {
 
   return {
     httpOnly: true,
-    secure: !looksLocal,                               // false on localhost
-    sameSite: looksLocal ? ("lax" as const) : ("none" as const), // "none" only when secure
-    domain: process.env.COOKIE_DOMAIN || undefined,    // leave undefined for localhost
+    secure: !looksLocal,                                 // must be true on Render
+    sameSite: looksLocal ? ("lax" as const) : ("none" as const),
+    // Do NOT force domain in multi-origin setups; default lets the API set
+    // cookies for its own host which is correct for cross-site requests.
     path: "/",
   };
 }
+
 function setAuthCookies(res: Response, accessToken: string, refreshToken: string) {
   const base = cookieBaseOpts();
   res.cookie("accessToken", accessToken, { ...base, maxAge: 15 * 60 * 1000 });          // 15m
@@ -38,7 +40,7 @@ function clearAuthCookies(res: Response) {
 function readRefreshToken(req: Request): string | undefined {
   const fromCookie = (req as any).cookies?.refreshToken as string | undefined;
 
-  const auth = req.header("authorization");
+  const auth = req.header("authorization") || req.header("Authorization");
   const bearer = auth && auth.startsWith("Bearer ") ? auth.slice(7) : undefined;
 
   const fromHeader = req.header("x-refresh-token") || bearer;
@@ -46,7 +48,6 @@ function readRefreshToken(req: Request): string | undefined {
 
   return fromCookie || fromHeader || fromBody;
 }
-
 
 export const register = asyncHandler(async (req: Request, res: Response) => {
   const data = registerSchema.parse(req.body);
@@ -75,14 +76,11 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
   });
 
   setAuthCookies(res, accessToken, refreshToken);
-  return res
-    .status(201)
-    .json(new ApiResponse(201, {
-      user: { _id: user._id, name: user.name, email: user.email, role: user.role },
-      tokens: { accessToken, refreshToken }
-    }, "Registered"));
+  return res.status(201).json(new ApiResponse(201, {
+    user: { _id: user._id, name: user.name, email: user.email, role: user.role },
+    tokens: { accessToken, refreshToken },
+  }, "Registered")));
 });
-
 
 export const login = asyncHandler(async (req: Request, res: Response) => {
   const { email, password } = loginSchema.parse(req.body);
@@ -107,8 +105,8 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   setAuthCookies(res, accessToken, refreshToken);
   return res.json(new ApiResponse(200, {
     user: { _id: user._id, name: user.name, email: user.email, role: user.role },
-    tokens: { accessToken, refreshToken }
-  }, "Logged in"));
+    tokens: { accessToken, refreshToken },
+  }, "Logged in")));
 });
 
 export const refresh = asyncHandler(async (req: Request, res: Response) => {
@@ -125,14 +123,14 @@ export const refresh = asyncHandler(async (req: Request, res: Response) => {
   const user = await User.findById(decoded._id).select("_id name email role");
   if (!user) throw new ApiError(401, "User not found");
 
+  // find a matching, not-revoked refresh session
   const candidates = await RefreshToken.find({ userId: user._id, revokedAt: { $exists: false } })
     .sort({ createdAt: -1 })
     .limit(20);
 
-  let matched: typeof candidates[number] | null = null;
+  let matched: (typeof candidates)[number] | null = null;
   for (const rt of candidates) {
-    const ok = await bcrypt.compare(incoming, rt.tokenHash);
-    if (ok) { matched = rt; break; }
+    if (await bcrypt.compare(incoming, rt.tokenHash)) { matched = rt; break; }
   }
   if (!matched) throw new ApiError(401, "Refresh session not recognized (re-login)");
 
@@ -151,44 +149,28 @@ export const refresh = asyncHandler(async (req: Request, res: Response) => {
   });
 
   setAuthCookies(res, newAccess, newRefresh);
-  return res.json(new ApiResponse(200, { accessToken: newAccess, refreshToken: newRefresh }, "Token rotated"));
+  return res.json(new ApiResponse(200, { accessToken: newAccess, refreshToken: newRefresh }, "Token rotated")));
 });
 
-/** POST /auth/logout — revoke the presented refresh token (if any) */
 export const logout = asyncHandler(async (req: Request, res: Response) => {
   const incoming = readRefreshToken(req);
-  if (!incoming) {
-    // best effort: remove cookies anyway
-    res.clearCookie("accessToken");
-    res.clearCookie("refreshToken");
-    return res.json(new ApiResponse(200, null, "Logged out"));
-  }
-
-  // revoke matching session (best effort)
-  const all = await RefreshToken.find({ revokedAt: { $exists: false } }).sort({ createdAt: -1 }).limit(50);
-  for (const rt of all) {
-    if (await bcrypt.compare(incoming, rt.tokenHash)) {
-      rt.revokedAt = new Date();
-      await rt.save();
-      break;
+  if (incoming) {
+    const list = await RefreshToken.find({ revokedAt: { $exists: false } }).sort({ createdAt: -1 }).limit(50);
+    for (const rt of list) {
+      if (await bcrypt.compare(incoming, rt.tokenHash)) { rt.revokedAt = new Date(); await rt.save(); break; }
     }
   }
-
-  res.clearCookie("accessToken");
-  res.clearCookie("refreshToken");
+  clearAuthCookies(res);
   return res.json(new ApiResponse(200, null, "Logged out"));
 });
 
-/** POST /auth/logout-all — revoke all user sessions (requires access token) */
 export const logoutAll = asyncHandler(async (req: any, res: Response) => {
   if (!req.user?._id) throw new ApiError(401, "Unauthorized");
   await RefreshToken.updateMany({ userId: req.user._id, revokedAt: { $exists: false } }, { $set: { revokedAt: new Date() } });
-  res.clearCookie("accessToken");
-  res.clearCookie("refreshToken");
+  clearAuthCookies(res);
   return res.json(new ApiResponse(200, null, "All sessions revoked"));
 });
 
-/** GET /auth/me (requires access token) */
 export const me = asyncHandler(async (req: any, res: Response) => {
   if (!req.user?._id) throw new ApiError(401, "Unauthorized");
   const fresh = await User.findById(req.user._id).select("_id name email role phone createdAt");
