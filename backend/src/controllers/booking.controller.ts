@@ -216,15 +216,14 @@ export const getBooking = asyncHandler(async (req: any, res: Response) => {
   ensureAuthed(req);
   const { id } = req.params;
   if (!isValidObjectId(id)) throw new ApiError(400, "Invalid booking id");
-
   const b = await Booking.findById(id)
-    .populate("tripId", "origin destination startTime pricePerSeat kind routeName")
-    .lean();
-  if (!b) throw new ApiError(404, "Booking not found");
-
-  if (b.userId.toString() !== req.user._id.toString() && req.user.role !== "admin") {
-    throw new ApiError(403, "Forbidden");
-  }
+  .populate("tripId", "origin destination startTime pricePerSeat kind routeName")
+  .lean();
+if (!b) throw new ApiError(404, "Booking not found");
+const owner = String((b as any).userId);
+if (owner !== String(req.user._id) && req.user.role !== "admin") {
+  throw new ApiError(403, "Forbidden");
+}
 
   return res.json(new ApiResponse(200, shape(b)));
 });

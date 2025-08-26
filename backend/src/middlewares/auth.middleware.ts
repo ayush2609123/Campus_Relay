@@ -1,7 +1,7 @@
 // src/middlewares/auth.middleware.ts
 import { Request, Response, NextFunction } from "express";
 import jwt, { JwtPayload } from "jsonwebtoken";
-import ApiError from "../utils/ApiError";           // if you exported named: { ApiError }
+import {ApiError }from "../utils/ApiError";           // if you exported named: { ApiError }
 import { asyncHandler } from "../utils/asyncHandler";
 import User from "../models/User.model";
 

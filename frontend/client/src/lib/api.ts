@@ -1,25 +1,45 @@
-import axios from 'axios'
+// client/src/lib/api.ts
+import axios from "axios";
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api',
-  withCredentials: true,
-})
+  baseURL: import.meta.env.VITE_API_BASE || "http://localhost:8080/api",
+  withCredentials: true, // keep cookies
+});
 
+api.interceptors.request.use((config) => {
+  const at = localStorage.getItem("accessToken");
+  if (at) config.headers.Authorization = `Bearer ${at}`;
+  return config;
+});
+
+// Auto-refresh on 401, then retry once
 api.interceptors.response.use(
-  res => res,
-  async (error) => {
-    const original = error.config
-    if (error?.response?.status === 401 && !original.__isRetryRequest) {
-      original.__isRetryRequest = true
+  (r) => r,
+  async (err) => {
+    const original = err.config;
+    if (err?.response?.status === 401 && !original._retry) {
+      original._retry = true;
       try {
-        await api.post('/auth/refresh')
-        return api.request(original)
-      } catch (e) {
-        // fallthrough to caller — UI can redirect to /login
+        const rt = localStorage.getItem("refreshToken");
+        const headers = rt ? { Authorization: `Bearer ${rt}` } : undefined;
+        const { data } = await api.post("/auth/refresh", {}, { headers });
+
+        const accessToken = data?.data?.accessToken ?? data?.accessToken;
+        const refreshToken = data?.data?.refreshToken ?? data?.refreshToken;
+
+        if (accessToken) localStorage.setItem("accessToken", accessToken);
+        if (refreshToken) localStorage.setItem("refreshToken", refreshToken);
+
+        original.headers = original.headers || {};
+        original.headers.Authorization = `Bearer ${accessToken}`;
+        return api(original);
+      } catch {
+        localStorage.removeItem("accessToken");
+        localStorage.removeItem("refreshToken");
       }
     }
-    return Promise.reject(error)
+    throw err;
   }
-)
+);
 
-export default api
+export default api;

@@ -197,11 +197,15 @@ export const updateTrip = asyncHandler(async (req: any, res: Response) => {
   if (payload.pricePerSeat !== undefined) trip.pricePerSeat = payload.pricePerSeat;
   if (payload.startTime) trip.startTime = new Date(payload.startTime);
   if (payload.vehicleId && isValidObjectId(payload.vehicleId)) {
-    trip.vehicleId = new Types.ObjectId(payload.vehicleId);
-  }
+    if (payload.vehicleId) {
+        (trip as any).vehicleId = payload.vehicleId; // let mongoose cast
+      } else {
+        (trip as any).vehicleId = undefined;
+      }  }
+
   if (payload.origin) trip.origin = normalizePlace(payload.origin as any);
   if (payload.destination) trip.destination = normalizePlace(payload.destination as any);
-  if (Array.isArray(payload.stops)) trip.set("stops", normalizeStops(payload.stops as any[]));
+//   if (Array.isArray(payload.stops)) trip.set("stops", normalizeStops(payload.stops as any[]));
 
   await trip.save();
   return res.json(new ApiResponse(200, trip, "Trip updated"));

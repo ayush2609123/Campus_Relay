@@ -34,6 +34,7 @@ app.use(cookieParser());
 
 // health check
 app.get("/health", (_req, res) => res.json({ ok: true }));
+app.get("/healthz", (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
 
 // ...
 app.use("/api/auth", authRoutes);

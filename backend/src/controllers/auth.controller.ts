@@ -8,22 +8,45 @@ import { ApiResponse } from "../utils/ApiResponse";
 import { asyncHandler } from "../utils/asyncHandler";
 import { signAccess, signRefresh, verifyRefreshToken } from "../utils/jwt";
 
-function setAuthCookies(res: Response, accessToken: string, refreshToken: string) {
-  const isProd = process.env.NODE_ENV === "production";
-  const cookieBase = { httpOnly: true, secure: isProd,  sameSite: isProd ? "none" as const : "lax" as const, secure: isProd };
+function cookieBaseOpts() {
+  const publicOrigin = process.env.PUBLIC_ORIGIN || "";
+  const looksLocal =
+    publicOrigin.includes("localhost") ||
+    process.env.COOKIE_INSECURE === "true" ||
+    process.env.NODE_ENV !== "production";
 
-  res.cookie("accessToken", accessToken, { ...cookieBase, maxAge: 15 * 60 * 1000 }); // 15m
-  res.cookie("refreshToken", refreshToken, { ...cookieBase, maxAge: 7 * 24 * 60 * 60 * 1000 }); // 7d
+  return {
+    httpOnly: true,
+    secure: !looksLocal,                               // false on localhost
+    sameSite: looksLocal ? ("lax" as const) : ("none" as const), // "none" only when secure
+    domain: process.env.COOKIE_DOMAIN || undefined,    // leave undefined for localhost
+    path: "/",
+  };
+}
+function setAuthCookies(res: Response, accessToken: string, refreshToken: string) {
+  const base = cookieBaseOpts();
+  res.cookie("accessToken", accessToken, { ...base, maxAge: 15 * 60 * 1000 });          // 15m
+  res.cookie("refreshToken", refreshToken, { ...base, maxAge: 7 * 24 * 60 * 60 * 1000 }); // 7d
+}
+
+function clearAuthCookies(res: Response) {
+  const base = cookieBaseOpts();
+  res.clearCookie("accessToken", base);
+  res.clearCookie("refreshToken", base);
 }
 
 function readRefreshToken(req: Request): string | undefined {
   const fromCookie = (req as any).cookies?.refreshToken as string | undefined;
-  const fromHeader = req.header("x-refresh-token") || req.header("authorization")?.startsWith("Bearer ")
-    ? req.header("authorization")?.replace("Bearer ", "")
-    : undefined;
+
+  const auth = req.header("authorization");
+  const bearer = auth && auth.startsWith("Bearer ") ? auth.slice(7) : undefined;
+
+  const fromHeader = req.header("x-refresh-token") || bearer;
   const fromBody = (req.body?.refreshToken as string | undefined) || undefined;
+
   return fromCookie || fromHeader || fromBody;
 }
+
 
 export const register = asyncHandler(async (req: Request, res: Response) => {
   const data = registerSchema.parse(req.body);
