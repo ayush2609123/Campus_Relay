@@ -1,21 +1,27 @@
+// client/src/components/layout/TopNav.tsx
 import { Link, useNavigate } from "react-router-dom";
 import ThemeToggle from "./ThemeToggle";
 import api from "@/lib/api";
 import { MapPin, LogOut } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+
 type Me = { name?: string; email?: string; role?: "rider" | "driver" | "admin" } | null;
+
 const campusName = "IIIT Pune";
 
 export default function TopNav({ me }: { me?: Me }) {
-    const qc = useQueryClient();
+  const qc = useQueryClient();
   const nav = useNavigate();
-  const authed = !!me;
+  const authed = Boolean(me);
 
   const onLogout = async () => {
-    try { await api.post("/auth/logout"); }
-    finally {
-        qc.setQueryData(["me"], null);
-         nav("/login", { replace: true }); }
+    try {
+      await api.post("/auth/logout");
+    } finally {
+      // clear cached user and bounce to login
+      qc.setQueryData(["me"], null);
+      nav("/login", { replace: true });
+    }
   };
 
   return (
@@ -39,10 +45,20 @@ export default function TopNav({ me }: { me?: Me }) {
           )}
         </div>
 
-        {/* Right actions only  */}
+        {/* Right actions */}
         <div className="ml-auto flex items-center gap-2">
-            
+          {/* Quick link for interviewers to see the app */}
+          {!authed && (
+            <Link
+              to="/register"
+              className="hidden sm:inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-900 transition"
+            >
+              Create account
+            </Link>
+          )}
+
           <ThemeToggle />
+
           {authed ? (
             <button
               onClick={onLogout}

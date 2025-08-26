@@ -1,77 +1,52 @@
-// scripts/seed.ts
+// backend/scripts/seed.ts
+import "dotenv/config";
 import mongoose from "mongoose";
-import bcrypt from "bcryptjs";
-
+import bcrypt from "bcrypt";
 import User from "../src/models/User.model";
 import Vehicle from "../src/models/Vehicle.model";
 import Trip from "../src/models/Trip.model";
-import Hub from "../src/models/Hub.model";
-import { hubs } from "./seed-hubs";
-const MONGO = process.env.MONGO_URL!;
-
-function at(dayOffset: number, hh: number, mm=0) {
-  const d = new Date(); d.setDate(d.getDate()+dayOffset); d.setHours(hh, mm, 0, 0); return d;
-}
 
 async function main() {
-  await mongoose.connect(MONGO);
+  const MONGODB_URI = process.env.MONGODB_URI!;
+  await mongoose.connect(MONGODB_URI, { dbName: process.env.MONGODB_DB || "campus_relay" });
 
-  // Hubs (upsert)
-  for (const h of hubs) await Hub.updateOne({ name: h.name }, { $set: h }, { upsert: true });
+  const riderEmail = "demo.rider@campusrelay.dev";
+  const driverEmail = "demo.driver@campusrelay.dev";
+  const pass = await bcrypt.hash("demo1234", 12);
 
-  // Demo users
-  const [driver] = await Promise.all([
-    upsertUser("driver@demo.app", "Driver Demo", "driver"),
-    upsertUser("rider@demo.app", "Rider Demo", "rider"),
-  ]);
+  const [rider] = await User.findOrCreate?.({ email: riderEmail } as any) ??
+    [await User.findOneAndUpdate({ email: riderEmail }, { email: riderEmail, passwordHash: pass, role: "rider", name: "Demo Rider" }, { upsert: true, new: true })];
 
-  // Vehicle
-  const veh = await Vehicle.findOneAndUpdate(
-    { userId: driver._id, plateNumber: "MH12-AB-1234" },
-    { userId: driver._id, make: "Maruti", model: "Ertiga", seats: 6 },
+  const [driver] = await User.findOrCreate?.({ email: driverEmail } as any) ??
+    [await User.findOneAndUpdate({ email: driverEmail }, { email: driverEmail, passwordHash: pass, role: "driver", name: "Demo Driver" }, { upsert: true, new: true })];
+
+  const vehicle = await Vehicle.findOneAndUpdate(
+    { userId: driver._id, plateNumber: "MH12-DEMO" },
+    { userId: driver._id, make: "Maruti", model: "Ertiga", plateNumber: "MH12-DEMO", seats: 6 },
     { upsert: true, new: true }
   );
 
-  // Trips (next 3 days, morning/evening)
-  const get = async (n: string) => Hub.findOne({ name: n }).lean();
-  const iiit = await get("IIIT Pune (Talegaon)");
-  const pnq  = await get("PNQ Airport (Lohegaon)");
-  const hj1  = await get("Hinjawadi Phase 1");
-  const puneJ = await get("Pune Junction (Railway Station)");
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours() + 2, 0, 0);
 
-  const templates = [
-    { o: hj1,  d: iiit,     t: at(0, 18), price: 110, seats: 5 },
-    { o: iiit, d: pnq,      t: at(1, 7,30), price: 150, seats: 4 },
-    { o: pnq,  d: iiit,     t: at(1, 21), price: 150, seats: 4 },
-    { o: iiit, d: puneJ,    t: at(2, 9), price: 99, seats: 6 },
-    { o: puneJ,d: iiit,     t: at(2, 19), price: 99, seats: 6 },
-  ].filter(x => x.o && x.d) as any[];
-
-  for (const x of templates) {
-    await Trip.create({
+  await Trip.findOneAndUpdate(
+    { driverId: driver._id, "origin.name": "IIIT Pune", "destination.name": "Pune Station", startTime: start },
+    {
       driverId: driver._id,
-      vehicleId: veh._id,
-      origin: x.o, destination: x.d,
-      startTime: x.t,
-      pricePerSeat: x.price,
-      totalSeats: x.seats,
-      seatsLeft: x.seats,
+      vehicleId: vehicle._id,
+      origin: { name: "IIIT Pune", lat: 18.724, lng: 73.675 },
+      destination: { name: "Pune Station", lat: 18.528, lng: 73.874 },
+      startTime: start,
+      pricePerSeat: 49,
+      totalSeats: 6,
+      seatsLeft: 6,
       status: "published"
-    });
-  }
-
-  console.log("Seed OK.");
-  process.exit(0);
-}
-
-async function upsertUser(email: string, name: string, role: "rider" | "driver") {
-  const pwd = await bcrypt.hash("demo1234", 10);
-  return User.findOneAndUpdate(
-    { email },
-    { email, name, role, passwordHash: pwd },
-    { upsert: true, new: true, setDefaultsOnInsert: true }
+    },
+    { upsert: true, new: true }
   );
+
+  console.log("Seeded demo rider, driver, vehicle, and a trip.");
+  await mongoose.disconnect();
 }
 
-function hin(x:any){ return x; } // tiny ts helper
-main().catch(e => (console.error(e), process.exit(1)));
+main().catch(e => { console.error(e); process.exit(1); });
