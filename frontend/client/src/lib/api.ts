@@ -1,51 +1,45 @@
-import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
+// src/lib/api.ts
+import axios from "axios";
 
-declare module "axios" {
-  export interface InternalAxiosRequestConfig {
-    _retry?: boolean;
-  }
-}
+export const API_BASE =
+  import.meta.env.VITE_API_URL || "https://campus-relay.onrender.com/api";
 
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE ?? "/api",
-  withCredentials: true, // send/receive cookies
+  baseURL: API_BASE,
+  withCredentials: true,
 });
 
-let isRefreshing = false;
-let waiters: Array<(ok: boolean) => void> = [];
-const subscribe = (cb: (ok: boolean) => void) => waiters.push(cb);
-const flush = (ok: boolean) => { waiters.forEach(cb => cb(ok)); waiters = []; };
+// ---- optional: de-dupe refresh to avoid many /auth/refresh calls
+let refreshing: Promise<void> | null = null;
 
 api.interceptors.response.use(
-  r => r,
-  async (err: AxiosError) => {
-    const res = err.response;
-    const cfg = err.config as InternalAxiosRequestConfig | undefined;
-    if (!res || !cfg) throw err;
-
-    const path = new URL(cfg.url ?? "", api.defaults.baseURL as string).pathname;
-
-    // Only try refresh once, and never for auth endpoints themselves.
-    if (res.status === 401 && !cfg._retry && !path.startsWith("/auth/")) {
+  (r) => r,
+  async (err) => {
+    const cfg = err.config as any;
+    if (err.response?.status === 401 && !cfg?._retry) {
       cfg._retry = true;
 
-      if (!isRefreshing) {
-        isRefreshing = true;
+      // run one refresh at a time
+      refreshing ??= (async () => {
         try {
-          await api.post("/auth/refresh", null, { withCredentials: true });
-          flush(true);
+          await axios.post(`${API_BASE}/auth/refresh`, {}, { withCredentials: true });
         } catch {
-          flush(false);
+          // ignore – user is simply unauthenticated
         } finally {
-          isRefreshing = false;
+          refreshing = null;
         }
-      }
+      })();
 
-      return new Promise((resolve, reject) => {
-        subscribe(ok => ok ? resolve(api(cfg)) : reject(err));
-      });
+      await refreshing;
+      return api(cfg); // retry once
     }
-
-    throw err;
+    return Promise.reject(err);
   }
 );
+
+// handy helpers (optional)
+export const logout = () => api.post("/auth/logout");
+export const me = () => api.get("/auth/me");
+
+// 👇 this line fixes your build (TopNav imports default)
+export default api;
