@@ -2,12 +2,12 @@
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { fetchMe } from "@/lib/auth";
-
+import type { ReactNode } from "react";
 import AppShell from "@/components/layout/AppShell";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
 import Dashboard from "@/pages/Dashboard";
-
+import type { CurrentUser } from "@/lib/auth";
 // Rider features
 import SearchPage from "@/features/trips/SearchPage";
 import TripDetailPage from "@/features/trips/TripDetailPage";
@@ -26,14 +26,18 @@ import DriverLivePage from "@/features/trips/DriverLivePage";
 import LiveTrailViewPage from "@/features/location/LiveTrailViewPage";
 
 import LiveLocationPage from "./features/location/LiveLocationPage";
-function RequireAuth({ authed, children }: { authed: boolean; children: JSX.Element }) {
+function RequireAuth({ authed, children }: { authed: boolean; children: ReactNode }) {
   const loc = useLocation();
-  return authed ? children : <Navigate to="/login" replace state={{ from: loc }} />;
+  if (!authed) return <Navigate to="/login" replace state={{ from: loc }} />;
+  return <>{children}</>;
 }
-function RequireDriver({ me, children }: { me: any; children: JSX.Element }) {
+
+function RequireDriver({ me, children }: { me?: CurrentUser | null; children: ReactNode }) {
   const loc = useLocation();
-  return me && me.role === "driver" ? children : <Navigate to="/login" replace state={{ from: loc }} />;
+  if (!me || me.role !== "driver") return <Navigate to="/login" replace state={{ from: loc }} />;
+  return <>{children}</>;
 }
+
 
 export default function App() {
   const { data: me, isLoading } = useQuery({ queryKey: ["me"], queryFn: fetchMe });

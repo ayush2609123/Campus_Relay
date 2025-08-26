@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Trip } from "../types";
+import { Trip } from "../type";
 import { fmtDateTime } from "@/lib/dt";
 import { MapPin, ArrowRight, IndianRupee, Users } from "lucide-react";
 

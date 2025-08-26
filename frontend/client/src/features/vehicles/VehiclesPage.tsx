@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { listMyVehicles, addVehicle, editVehicle, removeVehicle, Vehicle } from "./api";
+import { listMyVehicles, addVehicle, removeVehicle, Vehicle } from "./api";
 
 export default function VehiclesPage() {
   const qc = useQueryClient();
@@ -30,8 +30,8 @@ export default function VehiclesPage() {
         <input className="rounded-xl border px-3 py-2 md:col-span-1" placeholder="Model" value={form.model} onChange={e=>setForm(f=>({...f, model:e.target.value}))}/>
         <input className="rounded-xl border px-3 py-2 md:col-span-2" placeholder="Plate number" value={form.plateNumber} onChange={e=>setForm(f=>({...f, plateNumber:e.target.value}))}/>
         <input type="number" min={1} max={8} className="rounded-xl border px-3 py-2 md:col-span-0.5" placeholder="Seats" value={form.seats} onChange={e=>setForm(f=>({...f, seats:Number(e.target.value)}))}/>
-        <button disabled={addmut.isPending} className="rounded-xl bg-emerald-600 text-white px-4 py-2 hover:bg-emerald-700 transition">
-          {addmut.isPending ? "Saving…" : "Add"}
+        <button disabled={addMut.isPending} className="rounded-xl bg-emerald-600 text-white px-4 py-2 hover:bg-emerald-700 transition">
+          {addMut.isPending ? "Saving…" : "Add"}
         </button>
       </form>
 
@@ -49,7 +49,7 @@ export default function VehiclesPage() {
                 <div className="text-sm text-slate-500">{v.plateNumber} • {v.seats} seats</div>
               </div>
               <button
-                disabled={delmut.isPending}
+                disabled={delMut.isPending}
                 onClick={() => { if (confirm("Delete vehicle?")) delMut.mutate(v._id); }}
                 className="rounded-xl border px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-900 transition"
               >

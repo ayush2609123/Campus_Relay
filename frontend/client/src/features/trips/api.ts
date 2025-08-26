@@ -1,6 +1,6 @@
 // client/src/features/trips/api.ts
 import api from "@/lib/api";
-import { Trip, Hub } from "./types";
+import { Trip, Hub } from "./type";
 
 /* ---------------------------------- Search --------------------------------- */
 export async function searchTrips(params: {

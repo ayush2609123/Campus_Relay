@@ -112,7 +112,7 @@ export default function MyBookingsPage() {
                     </span>
                   </span>
                 ) : (
-                  `Trip ${String(b.tripId).slice(-6)}`
+                  `Trip ${String(b.trip?._id).slice(-6)}`
                 )}
               </Link>
 
@@ -155,12 +155,12 @@ export default function MyBookingsPage() {
               </Link>
 
               <button
-                disabled={!canCancel || cancelmut.isPending}
+                disabled={!canCancel || cancelMut.isPending}
                 onClick={() => cancelMut.mutate(b._id)}
                 className="inline-flex items-center gap-2 rounded-xl border border-rose-300 text-rose-700 dark:border-rose-800 dark:text-rose-300 px-3 py-2 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition disabled:opacity-60"
                 title={canCancel ? "Cancel booking" : "Cannot cancel"}
               >
-                {cancelmut.isPending ? (
+                {cancelMut.isPending ? (
                   <Loader2 size={16} className="animate-spin" />
                 ) : (
                   <XCircle size={16} />

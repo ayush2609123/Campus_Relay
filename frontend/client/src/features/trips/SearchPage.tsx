@@ -1,7 +1,6 @@
 // client/src/features/trips/SearchPage.tsx
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { searchTrips, suggestHubs } from "./api";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";import { searchTrips, suggestHubs } from "./api";
 import TripCard from "./components/TripCard";
 import TripSkeleton from "./components/TripSkeleton";
 import { useDebounce } from "@/lib/useDebounce";
@@ -67,7 +66,7 @@ export default function SearchPage() {
         limit: 40,
       }),
     staleTime: 15_000,
-    keepPreviousData: true,
+    placeholderData: keepPreviousData
   });
 
   // Client-side time-of-day filter
