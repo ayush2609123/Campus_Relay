@@ -79,7 +79,7 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
   return res.status(201).json(new ApiResponse(201, {
     user: { _id: user._id, name: user.name, email: user.email, role: user.role },
     tokens: { accessToken, refreshToken },
-  }, "Registered")));
+  }, "Registered"));
 });
 
 export const login = asyncHandler(async (req: Request, res: Response) => {
@@ -106,7 +106,7 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   return res.json(new ApiResponse(200, {
     user: { _id: user._id, name: user.name, email: user.email, role: user.role },
     tokens: { accessToken, refreshToken },
-  }, "Logged in")));
+  }, "Logged in"));
 });
 
 export const refresh = asyncHandler(async (req: Request, res: Response) => {
@@ -149,7 +149,7 @@ export const refresh = asyncHandler(async (req: Request, res: Response) => {
   });
 
   setAuthCookies(res, newAccess, newRefresh);
-  return res.json(new ApiResponse(200, { accessToken: newAccess, refreshToken: newRefresh }, "Token rotated")));
+  return res.json(new ApiResponse(200, { accessToken: newAccess, refreshToken: newRefresh }, "Token rotated"));
 });
 
 export const logout = asyncHandler(async (req: Request, res: Response) => {
