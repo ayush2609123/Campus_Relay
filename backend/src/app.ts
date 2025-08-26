@@ -1,6 +1,6 @@
 // src/app.ts
 import express from "express";
-import cors from "cors";
+import cors, { CorsOptionsDelegate } from "cors";
 import cookieParser from "cookie-parser";
 import { errorHandler } from "./middlewares/errorHandler";
 
@@ -15,47 +15,43 @@ import locationRoutes from "./routes/location.routes";
 
 const app = express();
 
-// required for Secure cookies behind Render's proxy
+// trust proxy when running behind Render/NGINX
 app.set("trust proxy", 1);
 
-/**
- * CORS
- * FRONTEND_URL should be exactly your deployed client origin, e.g.
- *   https://campus-relay-1.onrender.com
- * You can add extra comma-separated origins in CORS_EXTRA_ORIGINS.
- */
-const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
-const EXTRA = (process.env.CORS_EXTRA_ORIGINS || "")
-  .split(",")
-  .map(s => s.trim())
-  .filter(Boolean);
-
-const ALLOW = new Set<string>([
-  FRONTEND_URL,
+// ----- CORS -----
+const FRONTEND_URL = (process.env.FRONTEND_URL || "").trim();
+const ALLOWED = new Set<string>([
   "http://localhost:5173",
-  ...EXTRA,
+  "http://127.0.0.1:5173",
+  ...(FRONTEND_URL ? [FRONTEND_URL] : []),
 ]);
 
-app.use(cors({
-  origin(origin, cb) {
-    if (!origin) return cb(null, true); // tools/SSR/postman
-    cb(ALLOW.has(origin) ? null : new Error("CORS: origin not allowed"), ALLOW.has(origin));
-  },
-  credentials: true,
-  methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
-  allowedHeaders: ["Content-Type","Authorization","X-Requested-With"],
-  optionsSuccessStatus: 204,
-}));
+const corsOptions: CorsOptionsDelegate = (req, cb) => {
+  const origin = req.header("Origin") || "";
+  const allow = !origin || ALLOWED.has(origin);
+  // Do NOT throw here — just disable CORS if not allowed so we don’t send a 500.
+  cb(null, {
+    origin: allow,
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+  });
+};
 
+app.use(cors(corsOptions));
+// Let preflights through quickly
+app.options("*", cors(corsOptions));
+
+// ----- parsers -----
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// health checks
+// ----- health -----
 app.get("/health", (_req, res) => res.json({ ok: true }));
 app.get("/healthz", (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
 
-// api routes
+// ----- routes -----
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/vehicles", vehicleRoutes);
@@ -68,7 +64,7 @@ app.use("/api/locations", locationRoutes);
 // 404
 app.all("*", (_req, res) => res.status(404).json({ error: "Not found" }));
 
-// central error handler
+// centralized error handler
 app.use(errorHandler);
 
 export default app;

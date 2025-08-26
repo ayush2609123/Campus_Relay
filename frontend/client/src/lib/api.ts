@@ -1,43 +1,56 @@
 // src/lib/api.ts
-import axios, { AxiosError, AxiosInstance } from "axios";
+import axios, { AxiosError, AxiosInstance, AxiosRequestConfig } from "axios";
 
 const api: AxiosInstance = axios.create({
   baseURL: import.meta.env.VITE_API_BASE || "/api",
-  withCredentials: true,
-  headers: { "Content-Type": "application/json" },
+  withCredentials: true, // send/receive httpOnly cookies
 });
 
-// --- 401 -> refresh -> retry interceptor ---
-let refreshing = false;
-let pending: Array<() => void> = [];
+// --- refresh logic (single-flight, no loops) ---
+let isRefreshing = false;
+let waiters: Array<() => void> = [];
+
+function onRefreshed() {
+  waiters.forEach((fn) => fn());
+  waiters = [];
+}
 
 api.interceptors.response.use(
-  r => r,
+  (res) => res,
   async (error: AxiosError) => {
-    const original = error.config as any;
-    if (!error.response) throw error;
+    const status = error.response?.status;
+    const original = error.config as (AxiosRequestConfig & { _retry?: boolean }) | undefined;
 
-    // avoid infinite loop
-    const status = error.response.status;
-    if (status === 401 && !original?._retry) {
+    // If unauthorized and we haven't tried refresh yet…
+    if (
+      status === 401 &&
+      original &&
+      !original._retry &&
+      // don't try to refresh for these endpoints
+      !String(original.url || "").includes("/auth/login") &&
+      !String(original.url || "").includes("/auth/register") &&
+      !String(original.url || "").includes("/auth/refresh")
+    ) {
       original._retry = true;
 
-      if (!refreshing) {
-        refreshing = true;
+      // Single-flight refresh
+      if (!isRefreshing) {
+        isRefreshing = true;
         try {
           await api.post("/auth/refresh");
-          pending.forEach(fn => fn());
-          pending = [];
-        } catch (e) {
-          pending = [];
-          refreshing = false;
-          // ensure app goes to login
+          onRefreshed();
+        } catch {
+          // refresh failed — reject all and let UI route to /login
+          onRefreshed();
+          isRefreshing = false;
           throw error;
         }
-        refreshing = false;
+        isRefreshing = false;
       } else {
-        await new Promise<void>(res => pending.push(res));
+        // wait until the in-flight refresh finishes
+        await new Promise<void>((resolve) => waiters.push(resolve));
       }
+      // retry the original request once
       return api(original);
     }
 
@@ -45,14 +58,16 @@ api.interceptors.response.use(
   }
 );
 
-// helpers
+// Optional helper
 export async function logout() {
   try {
     await api.post("/auth/logout");
   } finally {
+    // hard nav so any stale UI/Query state resets
     location.href = "/login";
   }
 }
 
+// Export both named and default (some files import default, some `{ api }`)
 export { api };
 export default api;

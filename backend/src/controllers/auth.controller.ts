@@ -1,3 +1,4 @@
+// src/controllers/auth.controller.ts
 import { Request, Response } from "express";
 import bcrypt from "bcrypt";
 import { registerSchema, loginSchema } from "../validators/auth.schema";
@@ -8,31 +9,32 @@ import { ApiResponse } from "../utils/ApiResponse";
 import { asyncHandler } from "../utils/asyncHandler";
 import { signAccess, signRefresh, verifyRefreshToken } from "../utils/jwt";
 
+// Compute cookie attributes once so clear/set always match
 function cookieBaseOpts() {
-  const publicOrigin = process.env.PUBLIC_ORIGIN || "";
+  const publicOrigin = (process.env.FRONTEND_URL || "").trim();
   const looksLocal =
-    publicOrigin.includes("localhost") ||
-    process.env.COOKIE_INSECURE === "true" ||
-    process.env.NODE_ENV !== "production";
+    !publicOrigin || publicOrigin.includes("localhost") || process.env.COOKIE_INSECURE === "true";
 
   return {
     httpOnly: true,
-    secure: !looksLocal,                                 // must be true on Render
-    sameSite: looksLocal ? ("lax" as const) : ("none" as const),
-    // Do NOT force domain in multi-origin setups; default lets the API set
-    // cookies for its own host which is correct for cross-site requests.
+    secure: !looksLocal,                  // must be true on Render
+    sameSite: looksLocal ? ("lax" as const) : ("none" as const), // None+Secure across subdomains
+    // DO NOT set domain for Render; default = backend host, which is correct
     path: "/",
   };
 }
 
 function setAuthCookies(res: Response, accessToken: string, refreshToken: string) {
   const base = cookieBaseOpts();
-  res.cookie("accessToken", accessToken, { ...base, maxAge: 15 * 60 * 1000 });          // 15m
-  res.cookie("refreshToken", refreshToken, { ...base, maxAge: 7 * 24 * 60 * 60 * 1000 }); // 7d
+  // 15 minutes
+  res.cookie("accessToken", accessToken, { ...base, maxAge: 15 * 60 * 1000 });
+  // 7 days
+  res.cookie("refreshToken", refreshToken, { ...base, maxAge: 7 * 24 * 60 * 60 * 1000 });
 }
 
 function clearAuthCookies(res: Response) {
   const base = cookieBaseOpts();
+  // clear must include the same attributes
   res.clearCookie("accessToken", base);
   res.clearCookie("refreshToken", base);
 }
@@ -40,7 +42,7 @@ function clearAuthCookies(res: Response) {
 function readRefreshToken(req: Request): string | undefined {
   const fromCookie = (req as any).cookies?.refreshToken as string | undefined;
 
-  const auth = req.header("authorization") || req.header("Authorization");
+  const auth = req.header("authorization");
   const bearer = auth && auth.startsWith("Bearer ") ? auth.slice(7) : undefined;
 
   const fromHeader = req.header("x-refresh-token") || bearer;
@@ -76,10 +78,12 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
   });
 
   setAuthCookies(res, accessToken, refreshToken);
-  return res.status(201).json(new ApiResponse(201, {
-    user: { _id: user._id, name: user.name, email: user.email, role: user.role },
-    tokens: { accessToken, refreshToken },
-  }, "Registered"));
+  return res
+    .status(201)
+    .json(new ApiResponse(201, {
+      user: { _id: user._id, name: user.name, email: user.email, role: user.role },
+      tokens: { accessToken, refreshToken }
+    }, "Registered"));
 });
 
 export const login = asyncHandler(async (req: Request, res: Response) => {
@@ -105,7 +109,7 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   setAuthCookies(res, accessToken, refreshToken);
   return res.json(new ApiResponse(200, {
     user: { _id: user._id, name: user.name, email: user.email, role: user.role },
-    tokens: { accessToken, refreshToken },
+    tokens: { accessToken, refreshToken }
   }, "Logged in"));
 });
 
@@ -123,12 +127,10 @@ export const refresh = asyncHandler(async (req: Request, res: Response) => {
   const user = await User.findById(decoded._id).select("_id name email role");
   if (!user) throw new ApiError(401, "User not found");
 
-  // find a matching, not-revoked refresh session
   const candidates = await RefreshToken.find({ userId: user._id, revokedAt: { $exists: false } })
-    .sort({ createdAt: -1 })
-    .limit(20);
+    .sort({ createdAt: -1 }).limit(20);
 
-  let matched: (typeof candidates)[number] | null = null;
+  let matched: typeof candidates[number] | null = null;
   for (const rt of candidates) {
     if (await bcrypt.compare(incoming, rt.tokenHash)) { matched = rt; break; }
   }
@@ -154,10 +156,15 @@ export const refresh = asyncHandler(async (req: Request, res: Response) => {
 
 export const logout = asyncHandler(async (req: Request, res: Response) => {
   const incoming = readRefreshToken(req);
+
   if (incoming) {
-    const list = await RefreshToken.find({ revokedAt: { $exists: false } }).sort({ createdAt: -1 }).limit(50);
-    for (const rt of list) {
-      if (await bcrypt.compare(incoming, rt.tokenHash)) { rt.revokedAt = new Date(); await rt.save(); break; }
+    const all = await RefreshToken.find({ revokedAt: { $exists: false } }).sort({ createdAt: -1 }).limit(50);
+    for (const rt of all) {
+      if (await bcrypt.compare(incoming, rt.tokenHash)) {
+        rt.revokedAt = new Date();
+        await rt.save();
+        break;
+      }
     }
   }
   clearAuthCookies(res);
