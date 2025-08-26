@@ -175,28 +175,28 @@ export default function DriverTripDetailPage() {
           <div className="text-sm text-slate-500 mb-2">Driver actions</div>
           <div className="grid gap-2">
             <button
-              disabled={!canPublish || mut.isLoading}
+              disabled={!canPublish || mut.isPending}
               onClick={() => onAction("publish")}
               className="inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2 hover:bg-slate-50 disabled:opacity-50"
             >
               <Flag size={16} /> Publish
             </button>
             <button
-              disabled={!canStart || mut.isLoading}
+              disabled={!canStart || mut.isPending}
               onClick={() => onAction("start")}
               className="inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2 hover:bg-slate-50 disabled:opacity-50"
             >
               <Play size={16} /> Start
             </button>
             <button
-              disabled={!canComplete || mut.isLoading}
+              disabled={!canComplete || mut.isPending}
               onClick={() => onAction("complete")}
               className="inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2 hover:bg-slate-50 disabled:opacity-50"
             >
               <CheckCircle2 size={16} /> Complete
             </button>
             <button
-              disabled={!canCancel || mut.isLoading}
+              disabled={!canCancel || mut.isPending}
               onClick={() => onAction("cancel")}
               className="inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2 hover:bg-slate-50 disabled:opacity-50"
             >

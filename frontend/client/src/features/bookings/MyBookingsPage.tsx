@@ -155,12 +155,12 @@ export default function MyBookingsPage() {
               </Link>
 
               <button
-                disabled={!canCancel || cancelMut.isLoading}
+                disabled={!canCancel || cancelmut.isPending}
                 onClick={() => cancelMut.mutate(b._id)}
                 className="inline-flex items-center gap-2 rounded-xl border border-rose-300 text-rose-700 dark:border-rose-800 dark:text-rose-300 px-3 py-2 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition disabled:opacity-60"
                 title={canCancel ? "Cancel booking" : "Cannot cancel"}
               >
-                {cancelMut.isLoading ? (
+                {cancelmut.isPending ? (
                   <Loader2 size={16} className="animate-spin" />
                 ) : (
                   <XCircle size={16} />

@@ -389,11 +389,11 @@ export default function CreateTripPage() {
           <div className="pt-2">
             <button
               type="submit"
-              disabled={mut.isLoading || !originPlace || !destPlace}
+              disabled={mut.isPending || !originPlace || !destPlace}
               className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-indigo-600 text-white px-5 py-2.5 hover:from-emerald-500 hover:to-indigo-500 transition active:scale-[.99] disabled:opacity-60"
             >
-              {mut.isLoading ? <Loader2 size={18} className="animate-spin" /> : null}
-              {mut.isLoading ? "Creating…" : "Create trip"}
+              {mut.isPending ? <Loader2 size={18} className="animate-spin" /> : null}
+              {mut.isPending ? "Creating…" : "Create trip"}
             </button>
             <div className="mt-2 text-xs text-slate-400">
               Start time must be at least 5 minutes from now. You can edit or cancel later from “My Trips”.

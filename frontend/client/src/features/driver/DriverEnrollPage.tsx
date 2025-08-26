@@ -22,7 +22,7 @@ export default function DriverEnrollPage() {
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!code.trim() || enrollMut.isLoading) return;
+    if (!code.trim() || enrollmut.isPending) return;
     enrollMut.mutate();
   };
 
@@ -71,10 +71,10 @@ export default function DriverEnrollPage() {
 
           <button
             type="submit"
-            disabled={!code.trim() || enrollMut.isLoading}
+            disabled={!code.trim() || enrollmut.isPending}
             className="w-full rounded-xl bg-emerald-600 text-white py-2 hover:bg-emerald-700 transition disabled:opacity-60"
           >
-            {enrollMut.isLoading ? "Upgrading…" : "Upgrade to Driver"}
+            {enrollmut.isPending ? "Upgrading…" : "Upgrade to Driver"}
           </button>
 
           {enrollMut.isError && (

@@ -37,10 +37,10 @@ export default function DriverVerifyPage() {
         </label>
         <button
           onClick={() => mut.mutate()}
-          disabled={!tripId || code.length !== 6 || mut.isLoading}
+          disabled={!tripId || code.length !== 6 || mut.isPending}
           className="w-full rounded-xl bg-emerald-600 text-white py-2 hover:bg-emerald-700 transition disabled:opacity-60"
         >
-          {mut.isLoading ? "Confirming…" : "Confirm booking"}
+          {mut.isPending ? "Confirming…" : "Confirm booking"}
         </button>
         <div className="text-xs text-slate-500">
           Tip: Open this screen from <b>Driver → My Trips → (trip) → Verify OTP</b> so it’s auto-scoped.
