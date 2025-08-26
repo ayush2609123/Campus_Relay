@@ -1,46 +1,51 @@
-// client/src/lib/api.ts
-import axios from "axios";
+import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE || "http://localhost:8080/api",
-  withCredentials: true, // keep cookies
-  headers: { "Content-Type": "application/json" },
+declare module "axios" {
+  export interface InternalAxiosRequestConfig {
+    _retry?: boolean;
+  }
+}
+
+export const api = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE ?? "/api",
+  withCredentials: true, // send/receive cookies
 });
 
-api.interceptors.request.use((config) => {
-  const at = localStorage.getItem("accessToken");
-  if (at) config.headers.Authorization = `Bearer ${at}`;
-  return config;
-});
+let isRefreshing = false;
+let waiters: Array<(ok: boolean) => void> = [];
+const subscribe = (cb: (ok: boolean) => void) => waiters.push(cb);
+const flush = (ok: boolean) => { waiters.forEach(cb => cb(ok)); waiters = []; };
 
-// Auto-refresh on 401, then retry once
 api.interceptors.response.use(
-  (r) => r,
-  async (err) => {
-    const original = err.config;
-    if (err?.response?.status === 401 && !original._retry) {
-      original._retry = true;
-      try {
-        const rt = localStorage.getItem("refreshToken");
-        const headers = rt ? { Authorization: `Bearer ${rt}` } : undefined;
-        const { data } = await api.post("/auth/refresh", {}, { headers });
+  r => r,
+  async (err: AxiosError) => {
+    const res = err.response;
+    const cfg = err.config as InternalAxiosRequestConfig | undefined;
+    if (!res || !cfg) throw err;
 
-        const accessToken = data?.data?.accessToken ?? data?.accessToken;
-        const refreshToken = data?.data?.refreshToken ?? data?.refreshToken;
+    const path = new URL(cfg.url ?? "", api.defaults.baseURL as string).pathname;
 
-        if (accessToken) localStorage.setItem("accessToken", accessToken);
-        if (refreshToken) localStorage.setItem("refreshToken", refreshToken);
+    // Only try refresh once, and never for auth endpoints themselves.
+    if (res.status === 401 && !cfg._retry && !path.startsWith("/auth/")) {
+      cfg._retry = true;
 
-        original.headers = original.headers || {};
-        original.headers.Authorization = `Bearer ${accessToken}`;
-        return api(original);
-      } catch {
-        localStorage.removeItem("accessToken");
-        localStorage.removeItem("refreshToken");
+      if (!isRefreshing) {
+        isRefreshing = true;
+        try {
+          await api.post("/auth/refresh", null, { withCredentials: true });
+          flush(true);
+        } catch {
+          flush(false);
+        } finally {
+          isRefreshing = false;
+        }
       }
+
+      return new Promise((resolve, reject) => {
+        subscribe(ok => ok ? resolve(api(cfg)) : reject(err));
+      });
     }
+
     throw err;
   }
 );
-
-export default api;

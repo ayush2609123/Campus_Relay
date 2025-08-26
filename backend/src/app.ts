@@ -16,18 +16,18 @@ const app = express();
 
 // trust proxy if behind vercel/nginx
 app.set("trust proxy", 1);
-
+const FRONTEND = process.env.CORS_ORIGIN || "https://campus-relay-1.onrender.com";
 // allow multiple origins via env: CORS_ORIGIN="http://localhost:5173,http://localhost:3000"
 const allowedOrigins =
   process.env.CORS_ORIGIN?.split(",").map((s) => s.trim()) ??
   ["http://localhost:5173", "http://localhost:3000"];
 
-app.use(
-  cors({
-    origin: allowedOrigins,
+  app.use(cors({
+    origin: FRONTEND,           // MUST be the exact URL, not "*"
     credentials: true,
-  })
-);
+    methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
+    allowedHeaders: ["Content-Type","Authorization","X-Requested-With","X-Refresh-Token"]
+  }));
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
