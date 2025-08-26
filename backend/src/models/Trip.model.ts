@@ -7,7 +7,7 @@ const PlaceSchema = new Schema(
     lat: { type: Number, required: true },
     lng: { type: Number, required: true },
     address: { type: String },
-    hubId: { type: Types.ObjectId, ref: "Hub" }, // optional, for preset hubs
+    hubId: { type: Schema.Types.Mixed }, // optional, for preset hubs
   },
   { _id: false }
 );

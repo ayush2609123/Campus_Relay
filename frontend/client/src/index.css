@@ -1,6 +1,9 @@
 @import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
 @source "../index.html";
 @source "./**/*.{ts,tsx}";
+
+
 :root {
   --radius: 14px;
   --shadow-card: 0 10px 30px rgba(0,0,0,.12);

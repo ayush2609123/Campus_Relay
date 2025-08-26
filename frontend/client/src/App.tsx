@@ -18,8 +18,14 @@ import BookingDetailPage from "@/features/bookings/BookingDetailPage";
 import CreateTripPage from "@/features/trips/CreateTripPage";
 import DriverVerifyPage from "@/features/bookings/DriverVerifyPage";
 import DriverEnrollPage from "@/features/driver/DriverEnrollPage";
-import MyTripsPage from "@/features/trips/MyTripsPage"; // <-- NEW
+import MyTripsPage from "@/features/trips/MyTripsPage"; 
 
+import VehiclesPage from "@/features/vehicles/VehiclesPage";
+import DriverTripDetailPage from "@/features/trips/DriverTripDetailPage";
+import DriverLivePage from "@/features/trips/DriverLivePage";
+import LiveTrailViewPage from "@/features/location/LiveTrailViewPage";
+
+import LiveLocationPage from "./features/location/LiveLocationPage";
 function RequireAuth({ authed, children }: { authed: boolean; children: JSX.Element }) {
   const loc = useLocation();
   return authed ? children : <Navigate to="/login" replace state={{ from: loc }} />;
@@ -68,6 +74,12 @@ export default function App() {
         <Route path="/driver/create-trip" element={<RequireDriver me={me}><CreateTripPage /></RequireDriver>} />
         <Route path="/driver/my-trips" element={<RequireDriver me={me}><MyTripsPage /></RequireDriver>} /> {/* NEW */}
         <Route path="/driver/verify-otp" element={<RequireDriver me={me}><DriverVerifyPage /></RequireDriver>} />
+        <Route path="/driver/vehicles" element={<RequireDriver me={me}><VehiclesPage /></RequireDriver>}/>
+        <Route path="/driver/trips/:id" element={<RequireDriver me={me}><DriverTripDetailPage /></RequireDriver>} />
+        <Route path="/driver/live/:id" element={<RequireDriver me={me}><DriverLivePage /></RequireDriver>} />
+        <Route path="/live/:tripId" element={<LiveTrailViewPage />} />
+        { /* driver live */ }
+         <Route path="/driver/live/:tripId" element={<LiveLocationPage />} />
 
         {/* Pretty aliases */}
         <Route path="/go/carpool" element={<Navigate to="/find-trips?kind=carpool" replace />} />

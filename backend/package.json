@@ -12,28 +12,32 @@
     "seed:hubs": "ts-node -r dotenv/config scripts/seed-hubs.ts",
     "user:driver": "ts-node -r dotenv/config scripts/make-driver.ts",
     "smoke": "ts-node -r dotenv/config scripts/smoke.ts"
-      
-    
   },
   "dependencies": {
     "bcrypt": "^5.1.1",
+    "bcryptjs": "^3.0.2",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
+    "leaflet": "^1.9.4",
     "mongoose": "^8.6.0",
     "qrcode": "^1.5.4",
+    "react-leaflet": "^5.0.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/bcrypt": "^5.0.0",
+    "@types/bcryptjs": "^2.4.6",
     "@types/cookie-parser": "^1.4.7",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/jsonwebtoken": "^9.0.6",
+    "@types/leaflet": "^1.9.20",
     "@types/node": "^20.12.13",
+    "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
-    "typescript": "^5.4.5"
+    "typescript": "^5.9.2"
   }
 }

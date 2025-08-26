@@ -24,6 +24,7 @@ export default function BookingDetailPage() {
   // ---- payments ----
   const [upiUri, setUpiUri] = useState<string | null>(null);
   const [qrData, setQrData] = useState<string | null>(null);
+  const [paymentId, setPaymentId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => setCopied(false), [upiUri]);
@@ -34,6 +35,7 @@ export default function BookingDetailPage() {
       const idemKey = `intent-${b._id}`; // idempotent per booking
       const res = await createPaymentIntent(b._id, amount, idemKey);
       setUpiUri(res.upiUri);
+      setPaymentId(res.paymentId || null);
       setQrData(await toQRDataURL(res.upiUri));
     } catch (e) {
       console.error(e);

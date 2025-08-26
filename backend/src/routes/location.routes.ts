@@ -1,10 +1,9 @@
 import { Router } from "express";
 import { verifyJWT } from "../middlewares/auth.middleware";
-import { postLiveLocation, getLiveTrail } from "../controllers/location.controller";
+import { postLiveLocation, getTrail } from "../controllers/location.controller";
 
 const r = Router();
-
+r.get("/:tripId", verifyJWT, getTrail);
 r.post("/:tripId", verifyJWT, postLiveLocation);
-r.get("/:tripId", verifyJWT, getLiveTrail);
 
 export default r;

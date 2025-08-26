@@ -43,12 +43,18 @@ export async function regenerateOtp(id: string): Promise<{ id: string; otp: stri
   return data.data;
 }
 
-export async function verifyOtp(id: string, code: string) {
-  const { data } = await api.post(`/bookings/${id}/verify-otp`, { code });
-  return data.data; // { id, verifiedAt }
-}
+export async function verifyOtpForTrip(tripId: string, code: string) {
+    const { data } = await api.post(`/trips/${tripId}/verify-otp`, { code });
+    return data.data as { id: string; verifiedAt: string };
+  }
+  
+export type PaymentIntentOut = { upiUri: string; paymentId?: string };
 
-export async function createPaymentIntent(bookingId: string, amount?: number, idemKey?: string) {
+export async function createPaymentIntent(
+  bookingId: string,
+  amount?: number,
+  idemKey?: string
+): Promise<PaymentIntentOut> {
   const { data } = await api.post(
     "/payments/intent",
     { bookingId, amount },
@@ -56,3 +62,4 @@ export async function createPaymentIntent(bookingId: string, amount?: number, id
   );
   return data.data; // { upiUri, paymentId? }
 }
+

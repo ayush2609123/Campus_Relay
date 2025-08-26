@@ -6,7 +6,7 @@ import {
   getBooking,
   cancelBooking,
   regenerateOtp,
-  verifyOtp
+  listBookingsByTripForDriver
 } from "../controllers/booking.controller";
 
 const r = Router();
@@ -16,6 +16,5 @@ r.get("/my", verifyJWT, myBookings);
 r.get("/:id", verifyJWT, getBooking);
 r.post("/:id/cancel", verifyJWT, cancelBooking);
 r.post("/:id/otp", verifyJWT, regenerateOtp);
-r.post("/:id/verify-otp", verifyJWT, verifyOtp);
-
+r.get("/by-trip/:tripId", verifyJWT, listBookingsByTripForDriver);
 export default r;

@@ -1,101 +1,80 @@
 import { Request, Response } from "express";
-import { Types } from "mongoose";
+import { Types, isValidObjectId } from "mongoose";
+import Trip from "../models/Trip.model";
+import Booking from "../models/Booking.model";
+import TripLocation from "../models/TripLocation.model";
 import { asyncHandler } from "../utils/asyncHandler";
 import { ApiError } from "../utils/ApiError";
 import { ApiResponse } from "../utils/ApiResponse";
-import Trip from "../models/Trip.model";
-import TripLocation from "../models/TripLocation.model";
-import Booking from "../models/Booking.model";
-import { postLocationSchema, getTrailQuerySchema } from "../validators/location.schema";
 
-/** simple in-memory rate limiter: max 2 posts/sec per (driverId, tripId) */
-const lastPostMap = new Map<string, number>();
-function rateLimit(driverId: string, tripId: string) {
-  const key = `${driverId}:${tripId}`;
-  const now = Date.now();
-  const last = lastPostMap.get(key) || 0;
-  if (now - last < 500) return false; // 2 per second
-  lastPostMap.set(key, now);
+/** helpers */
+function ensureAuthed(req: any) {
+  if (!req.user?._id) throw new ApiError(401, "Unauthorized");
+}
+
+/** Can this user view trip trail? driver/admin OR rider with a booking (not cancelled) */
+async function canView(user: any, tripId: string) {
+  if (user?.role === "admin") return true;
+  const trip = await Trip.findById(tripId).select("driverId");
+  if (!trip) throw new ApiError(404, "Trip not found");
+  if (String(trip.driverId) === String(user._id)) return true;
+  const b = await Booking.findOne({
+    tripId,
+    userId: user._id,
+    status: { $ne: "cancelled" },
+  }).select("_id");
+  return !!b;
+}
+
+/** Can this user post driver location? driver/admin only + trip ongoing */
+async function canPost(user: any, tripId: string) {
+  const trip = await Trip.findById(tripId).select("driverId status");
+  if (!trip) throw new ApiError(404, "Trip not found");
+  const isOwner = String(trip.driverId) === String(user._id);
+  if (!isOwner && user.role !== "admin") throw new ApiError(403, "Not your trip");
+  if (trip.status !== "ongoing") throw new ApiError(400, "Trip must be ongoing");
   return true;
 }
 
-/** ensure driver owns the trip */
-async function ensureTripOwner(req: any, tripId: string) {
-  if (!req.user?._id) throw new ApiError(401, "Unauthorized");
-  const trip = await Trip.findById(tripId).select("_id driverId status startTime");
-  if (!trip) throw new ApiError(404, "Trip not found");
-
-  const isOwner = trip.driverId.toString() === req.user._id.toString() || req.user.role === "admin";
-  if (!isOwner) throw new ApiError(403, "Not your trip");
-  return trip;
-}
-
-/** POST /locations/:tripId — driver posts a live location point */
+/** POST /api/locations/:tripId  body:{lat,lng,speed?,heading?} */
 export const postLiveLocation = asyncHandler(async (req: any, res: Response) => {
+  ensureAuthed(req);
   const { tripId } = req.params;
-  if (!Types.ObjectId.isValid(tripId)) throw new ApiError(400, "Invalid trip id");
+  if (!isValidObjectId(tripId)) throw new ApiError(400, "Invalid trip id");
 
-  const trip = await ensureTripOwner(req, tripId);
-
-  // optional: allow while published/ongoing; typically expected during 'ongoing'
-  if (!["published", "ongoing"].includes(trip.status)) {
-    throw new ApiError(400, `Cannot post location for ${trip.status} trip`);
+  const { lat, lng, speed, heading } = req.body || {};
+  if (typeof lat !== "number" || typeof lng !== "number") {
+    throw new ApiError(400, "lat & lng are required numbers");
   }
 
-  if (!rateLimit(req.user._id.toString(), tripId)) {
-    throw new ApiError(429, "Too many updates; max 2 per second");
-  }
+  await canPost(req.user, tripId);
 
-  const body = postLocationSchema.parse(req.body);
-  const doc = await TripLocation.create({
+  const point = await TripLocation.create({
     tripId: new Types.ObjectId(tripId),
-    lat: body.lat,
-    lng: body.lng,
-    speed: body.speed,
-    heading: body.heading,
-    ts: body.ts ? new Date(body.ts) : new Date()
+    lat,
+    lng,
+    speed,
+    heading,
   });
 
-  // (optional) prune very old points: keep last 2000 per trip (best-effort)
-  void TripLocation.deleteMany({ tripId, ts: { $lt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } }).exec();
-
-  return res.status(201).json(new ApiResponse(201, { id: doc._id, ts: doc.ts }, "Location appended"));
+  res.status(201).json(new ApiResponse(201, point, "ok"));
 });
 
-/** GET /locations/:tripId — authorized users fetch recent trail
- * Allowed:
- *  - Trip driver/admin
- *  - Riders who have a booking on that trip
- */
-export const getLiveTrail = asyncHandler(async (req: any, res: Response) => {
+/** GET /api/locations/:tripId?limit=200 */
+export const getTrail = asyncHandler(async (req: any, res: Response) => {
+  ensureAuthed(req);
   const { tripId } = req.params;
-  if (!Types.ObjectId.isValid(tripId)) throw new ApiError(400, "Invalid trip id");
+  const limit = Math.min(Number(req.query.limit ?? 200), 1000);
 
-  const q = getTrailQuerySchema.parse(req.query);
+  if (!isValidObjectId(tripId)) throw new ApiError(400, "Invalid trip id");
+  const allowed = await canView(req.user, tripId);
+  if (!allowed) throw new ApiError(403, "Not allowed");
 
-  if (!req.user?._id) throw new ApiError(401, "Unauthorized");
-
-  const trip = await Trip.findById(tripId).select("_id driverId");
-  if (!trip) throw new ApiError(404, "Trip not found");
-
-  const isDriver = trip.driverId.toString() === req.user._id.toString() || req.user.role === "admin";
-  let isRider = false;
-
-  if (!isDriver) {
-    const booking = await Booking.findOne({ tripId, userId: req.user._id, status: { $ne: "cancelled" } }).select("_id");
-    if (booking) isRider = true;
-  }
-  if (!isDriver && !isRider) throw new ApiError(403, "Not allowed to view this trail");
-
-  const filter: any = { tripId };
-  if (q.since) filter.ts = { $gte: new Date(q.since) };
-
-  const points = await TripLocation.find(filter)
+  const trail = await TripLocation.find({ tripId })
     .sort({ ts: -1 })
-    .limit(q.limit);
+    .limit(limit)
+    .lean();
 
-  // return in ascending time order for easier plotting
-  const ordered = points.reverse();
-
-  return res.json(new ApiResponse(200, ordered, "OK"));
+  // return oldest→newest for polylines
+  res.json(new ApiResponse(200, trail.reverse(), "ok"));
 });

@@ -7,7 +7,7 @@ import { ApiError } from "../utils/ApiError";
 import { ApiResponse } from "../utils/ApiResponse";
 import { asyncHandler } from "../utils/asyncHandler";
 import { createBookingSchema, verifyOtpSchema } from "../validators/booking.schema";
-
+import User from "../models/User.model";
 /** constants */
 const CANCEL_CUTOFF_MINUTES = 30;
 
@@ -231,44 +231,50 @@ export const getBooking = asyncHandler(async (req: any, res: Response) => {
 
 /** POST /bookings/:id/cancel — rider cancels before cutoff; seats returned */
 export const cancelBooking = asyncHandler(async (req: any, res: Response) => {
-  ensureAuthed(req);
-  const { id } = req.params;
-  if (!Types.ObjectId.isValid(id)) throw new ApiError(400, "Invalid booking id");
-
-  const b = await Booking.findById(id);
-  if (!b) throw new ApiError(404, "Booking not found");
-  if (b.userId.toString() !== req.user._id.toString() && req.user.role !== "admin") {
-    throw new ApiError(403, "Not allowed");
-  }
-  if (b.status === "cancelled")
-    return res.json(new ApiResponse(200, b, "Already cancelled"));
-
-  const trip = await Trip.findById(b.tripId);
-  if (!trip) throw new ApiError(404, "Trip not found");
-
-  const cutoff = new Date(trip.startTime.getTime() - CANCEL_CUTOFF_MINUTES * 60 * 1000);
-  if (new Date() >= cutoff)
-    throw new ApiError(400, `Cannot cancel within ${CANCEL_CUTOFF_MINUTES} minutes of start`);
-
-  const session = await startSession();
-  try {
-    await session.withTransaction(async () => {
-      const updatedB = await Booking.findOneAndUpdate(
-        { _id: b._id, status: { $ne: "cancelled" } },
-        { $set: { status: "cancelled" } },
-        { new: true, session }
-      );
-      if (!updatedB) return;
-
-      await Trip.updateOne({ _id: trip._id }, { $inc: { seatsLeft: b.seats } }, { session });
-    });
-  } finally {
-    session.endSession();
-  }
-
-  const fresh = await Booking.findById(b._id);
-  return res.json(new ApiResponse(200, fresh, "Booking cancelled"));
-});
+    ensureAuthed(req);
+    const { id } = req.params;
+    if (!Types.ObjectId.isValid(id)) throw new ApiError(400, "Invalid booking id");
+  
+    const b = await Booking.findById(id);
+    if (!b) throw new ApiError(404, "Booking not found");
+    if (b.userId.toString() !== req.user._id.toString() && req.user.role !== "admin") {
+      throw new ApiError(403, "Not allowed");
+    }
+    if (b.status === "cancelled")
+      return res.json(new ApiResponse(200, shape(await Booking.findById(id).populate(
+        "tripId", "origin destination startTime pricePerSeat kind routeName"
+      ).lean()), "Already cancelled"));
+  
+    const trip = await Trip.findById(b.tripId);
+    if (!trip) throw new ApiError(404, "Trip not found");
+  
+    const cutoff = new Date(trip.startTime.getTime() - CANCEL_CUTOFF_MINUTES * 60 * 1000);
+    if (new Date() >= cutoff)
+      throw new ApiError(400, `Cannot cancel within ${CANCEL_CUTOFF_MINUTES} minutes of start`);
+  
+    const session = await startSession();
+    try {
+      await session.withTransaction(async () => {
+        const updatedB = await Booking.findOneAndUpdate(
+          { _id: b._id, status: { $ne: "cancelled" } },
+          { $set: { status: "cancelled" } },
+          { new: true, session }
+        );
+        if (!updatedB) return;
+  
+        await Trip.updateOne({ _id: trip._id }, { $inc: { seatsLeft: b.seats } }, { session });
+      });
+    } finally {
+      session.endSession();
+    }
+  
+    // ✅ Return shaped doc with trip summary (consistent with other endpoints)
+    const fresh = await Booking.findById(b._id)
+      .populate("tripId", "origin destination startTime pricePerSeat kind routeName")
+      .lean();
+  
+    return res.json(new ApiResponse(200, shape(fresh), "Booking cancelled"));
+  });
 
 /** POST /bookings/:id/otp — (re)generate OTP for rider (overwrites previous hash) */
 export const regenerateOtp = asyncHandler(async (req: any, res: Response) => {
@@ -300,41 +306,83 @@ export const regenerateOtp = asyncHandler(async (req: any, res: Response) => {
 });
 
 /** POST /bookings/:id/verify-otp — driver verifies rider OTP at pickup (sets confirmed) */
-export const verifyOtp = asyncHandler(async (req: any, res: Response) => {
-  ensureDriver(req);
-  const { id } = req.params;
-  if (!Types.ObjectId.isValid(id)) throw new ApiError(400, "Invalid booking id");
 
-  const parsed = verifyOtpSchema.safeParse(req.body);
-  if (!parsed.success) {
-    const issues = parsed.error.issues.map((i) => ({
-      path: i.path.join("."),
-      message: i.message,
+// --- NEW: driver verifies OTP with only tripId + code (no booking id) ---
+export const verifyOtpForTrip = asyncHandler(async (req: any, res: Response) => {
+    ensureDriver(req);
+  
+    const { id: tripIdStr } = req.params;
+    if (!Types.ObjectId.isValid(tripIdStr)) throw new ApiError(400, "Invalid trip id");
+  
+    const parsed = verifyOtpSchema.safeParse(req.body);
+    if (!parsed.success) {
+      const issues = parsed.error.issues.map(i => ({ path: i.path.join("."), message: i.message }));
+      throw new ApiError(400, "Invalid request body", issues);
+    }
+    const { code } = parsed.data;
+  
+    // Ensure driver owns this trip (or admin)
+    const trip = await Trip.findById(tripIdStr).select("driverId startTime");
+    if (!trip) throw new ApiError(404, "Trip not found");
+    const isOwner = trip.driverId.toString() === req.user._id.toString() || req.user.role === "admin";
+    if (!isOwner) throw new ApiError(403, "Not your trip");
+  
+    // Look for a pending, non-expired booking on this trip whose hashed OTP matches `code`
+    const candidates = await Booking.find({
+      tripId: trip._id,
+      status: { $ne: "cancelled" },
+      otpHash: { $exists: true, $ne: null },
+      otpExpiresAt: { $gt: new Date() },
+    })
+      .sort({ createdAt: 1 }); // oldest first, collisions are rare but this is deterministic
+  
+    let match: any = null;
+    for (const b of candidates) {
+      if (b.verifiedAt) continue;
+      const ok = await bcrypt.compare(code, b.otpHash);
+      if (ok) { match = b; break; }
+    }
+  
+    if (!match) throw new ApiError(401, "Invalid or expired OTP");
+  
+    if (!match.verifiedAt) {
+      match.verifiedAt = new Date();
+      match.status = "confirmed";
+      await match.save();
+    }
+  
+    return res.json(new ApiResponse(200, { id: match._id, verifiedAt: match.verifiedAt }, "OTP verified"));
+  });
+  export const listBookingsByTripForDriver = asyncHandler(async (req: any, res: Response) => {
+    ensureDriver(req);
+    const { tripId } = req.params;
+    if (!isValidObjectId(tripId)) throw new ApiError(400, "Invalid trip id");
+  
+    const trip = await Trip.findById(tripId).select("driverId");
+    if (!trip) throw new ApiError(404, "Trip not found");
+    if (trip.driverId.toString() !== req.user._id.toString() && req.user.role !== "admin") {
+      throw new ApiError(403, "Not your trip");
+    }
+  
+    const rows = await Booking.find({
+      tripId,
+      status: { $ne: "cancelled" },
+    })
+      .sort({ createdAt: -1 })
+      .select("_id userId seats status verifiedAt createdAt")
+      .populate("userId", "name email")
+      .lean();
+  
+    const shaped = rows.map((b: any) => ({
+      _id: b._id,
+      seats: b.seats,
+      status: b.status,
+      verifiedAt: b.verifiedAt,
+      createdAt: b.createdAt,
+      user: b.userId
+        ? { _id: b.userId._id, name: b.userId.name, email: b.userId.email }
+        : undefined,
     }));
-    throw new ApiError(400, "Invalid request body", issues);
-  }
-  const { code } = parsed.data;
-
-  const b = await Booking.findById(id);
-  if (!b) throw new ApiError(404, "Booking not found");
-
-  const trip = await Trip.findById(b.tripId).select("driverId startTime");
-  if (!trip) throw new ApiError(404, "Trip not found");
-  if (trip.driverId.toString() !== req.user._id.toString() && req.user.role !== "admin") {
-    throw new ApiError(403, "Not your trip");
-  }
-
-  if (!b.otpHash || !b.otpExpiresAt) throw new ApiError(400, "OTP not set for this booking");
-  if (b.otpExpiresAt.getTime() < Date.now()) throw new ApiError(400, "OTP expired");
-
-  const ok = await bcrypt.compare(code, b.otpHash);
-  if (!ok) throw new ApiError(401, "Invalid OTP");
-
-  if (!b.verifiedAt) {
-    b.verifiedAt = new Date();
-    b.status = "confirmed";
-    await b.save();
-  }
-
-  return res.json(new ApiResponse(200, { id: b._id, verifiedAt: b.verifiedAt }, "OTP verified"));
-});
+  
+    return res.json(new ApiResponse(200, shaped, "OK"));
+  });

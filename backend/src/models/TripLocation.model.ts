@@ -1,4 +1,4 @@
-import { Schema, model, models, InferSchemaType, Types } from "mongoose";
+import { Schema, model, Types } from "mongoose";
 
 const TripLocationSchema = new Schema(
   {
@@ -9,10 +9,19 @@ const TripLocationSchema = new Schema(
     heading: Number,
     ts: { type: Date, default: () => new Date(), index: true },
   },
-  { timestamps: false }
+  { versionKey: false }
 );
 
 TripLocationSchema.index({ lat: 1, lng: 1 });
 
-export type TripLocationDoc = InferSchemaType<typeof TripLocationSchema>;
-export default models.TripLocation || model("TripLocation", TripLocationSchema);
+export type TripLocationDoc = {
+  _id: string;
+  tripId: string;
+  lat: number;
+  lng: number;
+  speed?: number;
+  heading?: number;
+  ts: string;
+};
+
+export default model("TripLocation", TripLocationSchema);
