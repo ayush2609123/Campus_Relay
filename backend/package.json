@@ -9,6 +9,7 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/index.js",
     "start:prod": "node dist/index.js",
+    "postbuild": "node -e \"const fs=require('fs');console.log('dist exists:',fs.existsSync('dist')); if(fs.existsSync('dist')) console.log('files:',fs.readdirSync('dist'))\"",
     "serve": "NODE_ENV=production dotenv -e .env.production -- node dist/index.js",
     "build:serve": "npm run build && npm run serve",
     "typecheck": "tsc --noEmit",
