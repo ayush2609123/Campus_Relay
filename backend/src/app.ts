@@ -17,34 +17,19 @@ const app = express();
 // trust proxy if behind vercel/nginx
 app.set("trust proxy", 1);
 
-const ORIGINS = (
-    process.env.CORS_ORIGINS ||
-    process.env.FRONTEND_URL || ""
-  )
-    .split(",")
-    .map(s => s.trim())
-    .filter(Boolean);
-  
-  // In prod, keep it tight. In dev, include localhost.
-  const corsOptions: cors.CorsOptions = {
-    origin(origin, cb) {
-      if (!origin) return cb(null, true);               // curl/mobile/native
-      if (ORIGINS.includes(origin)) return cb(null, true);
-      return cb(new Error("Not allowed by CORS"));
-    },
-    credentials: true,
-    methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "X-Requested-With",
-      "x-refresh-token",
-      "x-idempotency-key"
-    ],
-  };
-  
-  app.use(cors(corsOptions));
-  app.options("*", cors(corsOptions)); // handle preflight
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+
+app.use(cors({
+  origin(origin, cb) {
+    // allow same-origin (SSR/tools) and your frontend
+    if (!origin) return cb(null, true);
+    const allow = [FRONTEND_URL, "http://localhost:5173"].includes(origin);
+    cb(allow ? null : new Error("CORS blocked"), allow);
+  },
+  credentials: true,
+  methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"]
+}));
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
