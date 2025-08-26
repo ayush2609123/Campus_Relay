@@ -65,7 +65,8 @@ export default function App() {
         {/* Public landing */}
         <Route path="/" element={<Dashboard me={me} />} />
         <Route path="/dashboard" element={<Dashboard me={me} />} />
-
+        <Route path="/find-trips" element={<RequireAuth authed={authed}><SearchPage /></RequireAuth>} />
+        <Route path="/trips/:id" element={<RequireAuth authed={authed}><TripDetailPage /></RequireAuth>} />
         {/* Rider (requires login) */}
         <Route
           path="/carpool"
