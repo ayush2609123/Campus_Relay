@@ -31,14 +31,55 @@ export type PlaceInput = {
 };
 export type TripKind = "carpool" | "shuttle";
 
-const DEFAULT_HUBS: Hub[] = [
-  { _id: "static:iiit", name: "IIIT Pune (Talegaon)", lat: 18.7407, lng: 73.6813, address: "Talegaon Dabhade, Pune" },
-  { _id: "static:junction", name: "Pune Junction", lat: 18.5286, lng: 73.8740, address: "Pune Railway Station" },
-  { _id: "static:airport", name: "Pune Airport (PNQ)", lat: 18.5814, lng: 73.9200, address: "Lohegaon, Pune" },
-  { _id: "static:hinj", name: "Hinjawadi Phase 1", lat: 18.5919, lng: 73.7389 },
-  { _id: "static:shivajinagar", name: "Shivajinagar Bus Stand", lat: 18.5309, lng: 73.8478 },
-];
+// types:  type Hub = { _id: string; name: string; lat: number; lng: number; address?: string };
 
+export const DEFAULT_HUBS: Hub[] = [
+    // --- existing ---
+    { _id: "static:iiit",         name: "IIIT Pune (Talegaon)",      lat: 18.7407, lng: 73.6813, address: "Talegaon Dabhade, Pune" },
+    { _id: "static:junction",     name: "Pune Junction",             lat: 18.5286, lng: 73.8740, address: "Pune Railway Station" },
+    { _id: "static:airport",      name: "Pune Airport (PNQ)",        lat: 18.5814, lng: 73.9200, address: "Lohegaon, Pune" },
+    { _id: "static:hinj",         name: "Hinjawadi Phase 1",         lat: 18.5919, lng: 73.7389 },
+    { _id: "static:shivajinagar", name: "Shivajinagar Bus Stand",    lat: 18.5309, lng: 73.8478 },
+  
+    // --- Talegaon / Outer NW ---
+    { _id: "static:talegaon-stn", name: "Talegaon Railway Station",  lat: 18.7310, lng: 73.6760 },
+    { _id: "static:lonavala",     name: "Lonavala Station",          lat: 18.7500, lng: 73.4057 },
+  
+    // --- Hinjawadi cluster ---
+    { _id: "static:hinj2",        name: "Hinjawadi Phase 2",         lat: 18.5869, lng: 73.7339 },
+    { _id: "static:hinj3",        name: "Hinjawadi Phase 3",         lat: 18.5905, lng: 73.7188 },
+    { _id: "static:wakad",        name: "Wakad Chowk",               lat: 18.5972, lng: 73.7646 },
+    { _id: "static:balewadi",     name: "Balewadi High Street",      lat: 18.5646, lng: 73.7726 },
+    { _id: "static:baner",        name: "Baner",                     lat: 18.5590, lng: 73.7865 },
+    { _id: "static:aundh",        name: "Aundh",                     lat: 18.5603, lng: 73.8077 },
+    { _id: "static:itpark",       name: "Pune IT Park (Aundh)",      lat: 18.5617, lng: 73.8178 },
+  
+    // --- University / Deccan belt ---
+    { _id: "static:sppu",         name: "SPPU Main Gate",            lat: 18.5523, lng: 73.8245, address: "Savitribai Phule Pune University" },
+    { _id: "static:fcroad",       name: "FC Road",                   lat: 18.5165, lng: 73.8417 },
+    { _id: "static:deccan",       name: "Deccan Gymkhana",           lat: 18.5161, lng: 73.8448 },
+  
+    // --- Central / South ---
+    { _id: "static:swargate",     name: "Swargate Bus Stand",        lat: 18.5018, lng: 73.8645 },
+    { _id: "static:kothrud",      name: "Kothrud Depot",             lat: 18.5074, lng: 73.8074 },
+    { _id: "static:mgroad",       name: "Camp (MG Road)",            lat: 18.5160, lng: 73.8793 },
+    { _id: "static:katraj",       name: "Katraj",                    lat: 18.4575, lng: 73.8675 },
+  
+    // --- East / Airport side ---
+    { _id: "static:viman",        name: "Viman Nagar",               lat: 18.5660, lng: 73.9143 },
+    { _id: "static:kalyani",      name: "Kalyani Nagar",             lat: 18.5510, lng: 73.9028 },
+    { _id: "static:yerwada",      name: "Yerwada",                   lat: 18.5566, lng: 73.8997 },
+    { _id: "static:kharadi",      name: "Kharadi",                   lat: 18.5511, lng: 73.9433 },
+    { _id: "static:hadapsar",     name: "Hadapsar",                  lat: 18.5089, lng: 73.9257 },
+    { _id: "static:magarpatta",   name: "Magarpatta City",           lat: 18.5161, lng: 73.9340 },
+  
+    // --- PCMC belt ---
+    { _id: "static:pimpri",       name: "Pimpri (PCMC)",             lat: 18.6289, lng: 73.7997 },
+    { _id: "static:chinchwad",    name: "Chinchwad Station",         lat: 18.6280, lng: 73.8009 },
+    { _id: "static:nigdi",        name: "Nigdi Bhakti Shakti",       lat: 18.6513, lng: 73.7673 },
+    { _id: "static:akurdi",       name: "Akurdi Railway Station",    lat: 18.6481, lng: 73.7602 },
+  ];
+  
 // keep hubId only if it looks like a real Mongo ObjectId
 const isHex24 = (s?: string) => !!s && /^[a-f\d]{24}$/i.test(s);
 
